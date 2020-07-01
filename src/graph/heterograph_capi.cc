@@ -433,6 +433,45 @@ DGL_REGISTER_GLOBAL("heterograph_index._CAPI_DGLHeteroCopyTo")
     *rv = HeteroGraphRef(hg_new);
   });
 
+DGL_REGISTER_GLOBAL("heterograph_index._CAPI_DGLHeteroDisjointUnion_v2")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+    GraphRef meta_graph = args[0];
+    List<HeteroGraphRef> component_graphs = args[1];
+    CHECK(component_graphs.size() > 0)
+      << "Expect graph list has at least one graph";
+    std::vector<HeteroGraphPtr> component_ptrs;
+    component_ptrs.reserve(component_graphs.size());
+    const int64_t bits = component_graphs[0]->NumBits();
+    const DLContext ctx = component_graphs[0]->Context();
+    for (const auto& component : component_graphs) {
+      component_ptrs.push_back(component.sptr());
+      CHECK_EQ(component->NumBits(), bits)
+        << "Expect graphs to batch have the same index dtype(int" << bits
+        << "), but got int" << component->NumBits();
+      CHECK_EQ(component->Context(), ctx)
+        << "Expect graphs to batch have the same context" << ctx
+        << "), but got " << component->Context();
+    }
+
+    auto hgptr = DisjointUnionHeteroGraph2(meta_graph.sptr(), component_ptrs);
+    *rv = HeteroGraphRef(hgptr);
+});
+
+DGL_REGISTER_GLOBAL("heterograph_index._CAPI_DGLHeteroDisjointPartitionBySizes_v2")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+    HeteroGraphRef hg = args[0];
+    const IdArray vertex_sizes = args[1];
+    const IdArray edge_sizes = args[2];
+    std::vector<HeteroGraphPtr> ret;
+    ret = DisjointPartitionHeteroBySizes2(hg->meta_graph(), hg.sptr(),
+                                          vertex_sizes, edge_sizes);
+    List<HeteroGraphRef> ret_list;
+    for (HeteroGraphPtr hgptr : ret) {
+      ret_list.push_back(HeteroGraphRef(hgptr));
+    }
+    *rv = ret_list;
+});
+
 DGL_REGISTER_GLOBAL("heterograph_index._CAPI_DGLHeteroDisjointUnion")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
     GraphRef meta_graph = args[0];
@@ -531,4 +570,30 @@ DGL_REGISTER_GLOBAL("transform._CAPI_DGLAsImmutableGraph")
     *rv = GraphRef(hg->AsImmutableGraph());
   });
 
+DGL_REGISTER_GLOBAL("heterograph._CAPI_DGLFindSrcDstNtypes")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+    GraphRef metagraph = args[0];
+    std::set<int64_t> dst_set;
+    std::set<int64_t> src_set;
+
+    for (int64_t eid = 0; eid < metagraph->NumEdges(); ++eid) {
+      auto edge = metagraph->FindEdge(eid);
+      auto src = edge.first;
+      auto dst = edge.second;
+      dst_set.insert(dst);
+      if (dst_set.count(src))
+        return;
+    }
+
+    List<Value> srclist, dstlist;
+    List<List<Value>> ret_list;
+    for (auto dst : dst_set)
+      dstlist.push_back(Value(MakeValue(dst)));
+    for (int64_t nid = 0 ; nid < metagraph->NumVertices(); ++nid)
+      if (!dst_set.count(nid))
+        srclist.push_back(Value(MakeValue(nid)));
+    ret_list.push_back(srclist);
+    ret_list.push_back(dstlist);
+    *rv = ret_list;
+  });
 }  // namespace dgl

@@ -6,7 +6,7 @@
 [![Benchmark by ASV](http://img.shields.io/badge/benchmarked%20by-asv-green.svg?style=flat)](https://asv.dgl.ai/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 
-Documentation ([Latest](https://docs.dgl.ai/en/latest/) | [Stable](https://docs.dgl.ai)) | [DGL at a glance](https://docs.dgl.ai/tutorials/basics/1_first.html#sphx-glr-tutorials-basics-1-first-py) | [Model Tutorials](https://docs.dgl.ai/tutorials/models/index.html) | [Discussion Forum](https://discuss.dgl.ai)
+Documentation ([Latest](https://docs.dgl.ai/en/latest/) | [Stable](https://docs.dgl.ai)) | [DGL at a glance](https://docs.dgl.ai/tutorials/basics/1_first.html#sphx-glr-tutorials-basics-1-first-py) | [Model Tutorials](https://docs.dgl.ai/tutorials/models/index.html) | [Discussion Forum](https://discuss.dgl.ai) | [Slack Channel](https://join.slack.com/t/deep-graph-library/shared_invite/zt-eb4ict1g-xcg3PhZAFAB8p6dtKuP6xQ)
 
 
 DGL is an easy-to-use, high performance and scalable Python package for deep learning on graphs. DGL is framework agnostic, meaning if a deep graph model is a component of an end-to-end application, the rest of the logics can be implemented in any major frameworks, such as PyTorch, Apache MXNet or TensorFlow.
@@ -18,9 +18,11 @@ DGL is an easy-to-use, high performance and scalable Python package for deep lea
 </p>
 
 ## <img src="http://data.dgl.ai/asset/image/new.png" width="30">DGL News
-*03/31/2020*: The new **v0.4.3 release** includes official TensorFlow support, with 15 popular GNN modules. DGL-KE and DGL-LifeSci, two packages for knowledge graph embedding and chemi- and bio-informatics respectively, have graduated as standalone packages and can be installed by pip and conda. The new release provides full support of graph sampling on heterogeneous graphs, with multi-GPU acceleration. See our [new feature walkthrough](https://www.dgl.ai/release/2020/04/01/release.html) and [release note](https://github.com/dmlc/dgl/releases/tag/0.4.3).
+**06/11/2020**: Amazon Shanghai AI Lab and AWS Deep Engine Science team working along with academic collaborators from the University of Minnesota, The Ohio State University, and Hunan University have created the **[Drug Repurposing Knowledge Graph (DRKG)](https://github.com/gnn4dr/DRKG)** and a set of machine learning tools, [DGL-KE](https://github.com/awslabs/dgl-ke), that can be used to prioritize drugs for repurposing studies. 
+DRKG is a comprehensive biological knowledge graph that relates human genes, compounds, biological processes, drug side effects, diseases and symptoms. DRKG includes, curates, and normalizes information from six publicly available databases and data that were collected from recent publications related to Covid-19. It has 97,238 entities belonging to 13 types of entities, and 5,874,261 triplets belonging to 107 types of relations. 
+More about the dataset is in this [blogpost](https://www.dgl.ai/news/2020/06/09/covid.html).
 
-*03/02/2020*: **Check out this cool paper: [Benchmarking Graph Neural Networks](https://arxiv.org/abs/2003.00982)!**  It includes a DGL-based benchmark framework for novel medium-scale graph datasets, covering mathematical modeling, computer vision, chemistry and combinatorial problems.  See [repo here](https://github.com/graphdeeplearning/benchmarking-gnns).
+**03/31/2020**: The new **v0.4.3 release** includes official TensorFlow support, with 15 popular GNN modules. DGL-KE and DGL-LifeSci, two packages for knowledge graph embedding and chemi- and bio-informatics respectively, have graduated as standalone packages and can be installed by pip and conda. The new release provides full support of graph sampling on heterogeneous graphs, with multi-GPU acceleration. See our [new feature walkthrough](https://www.dgl.ai/release/2020/04/01/release.html) and [release note](https://github.com/dmlc/dgl/releases/tag/0.4.3).
 
 ## Using DGL
 

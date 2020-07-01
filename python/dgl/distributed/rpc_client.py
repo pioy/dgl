@@ -111,6 +111,10 @@ def connect_to_server(ip_config, max_queue_size=MAX_QUEUE_SIZE, net_type='socket
     rpc.register_service(rpc.SHUT_DOWN_SERVER,
                          rpc.ShutDownRequest,
                          None)
+    rpc.register_service(rpc.GET_NUM_CLIENT,
+                         rpc.GetNumberClientsRequest,
+                         rpc.GetNumberClientsResponse)
+    rpc.register_ctrl_c()
     server_namebook = rpc.read_ip_config(ip_config)
     num_servers = len(server_namebook)
     rpc.set_num_server(num_servers)
@@ -122,6 +126,7 @@ def connect_to_server(ip_config, max_queue_size=MAX_QUEUE_SIZE, net_type='socket
         group_count.append(server_info[3])
         if server_info[0] > max_machine_id:
             max_machine_id = server_info[0]
+    rpc.set_num_server_per_machine(group_count[0])
     num_machines = max_machine_id+1
     rpc.set_num_machines(num_machines)
     machine_id = get_local_machine_id(server_namebook)
@@ -148,6 +153,11 @@ def connect_to_server(ip_config, max_queue_size=MAX_QUEUE_SIZE, net_type='socket
     rpc.set_rank(res.client_id)
     print("Machine (%d) client (%d) connect to server successfuly!" \
         % (machine_id, rpc.get_rank()))
+    # get total number of client
+    get_client_num_req = rpc.GetNumberClientsRequest(rpc.get_rank())
+    rpc.send_request(0, get_client_num_req)
+    res = rpc.recv_response()
+    rpc.set_num_client(res.num_client)
 
 def finalize_client():
     """Release resources of this client."""

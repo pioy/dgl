@@ -242,23 +242,47 @@ def test_partition_with_halo():
             block_eids2 = F.asnumpy(F.gather_row(subg.parent_eid, block_eids2))
             assert np.all(np.sort(block_eids1) == np.sort(block_eids2))
 
+    subgs = dgl.transform.partition_graph_with_halo(g, node_part, 2, reshuffle=True)
+    for part_id, subg in subgs.items():
+        node_ids = np.nonzero(node_part == part_id)[0]
+        lnode_ids = np.nonzero(F.asnumpy(subg.ndata['inner_node']))[0]
+        assert np.all(np.sort(F.asnumpy(subg.ndata['orig_id'])[lnode_ids]) == node_ids)
+
 @unittest.skipIf(F._default_context_str == 'gpu', reason="METIS doesn't support GPU")
 def test_metis_partition():
+    # TODO(zhengda) Metis fails to partition a small graph.
     g = dgl.DGLGraph(create_large_graph_index(1000), readonly=True)
-    subgs = dgl.transform.metis_partition(g, 4, 0)
-    num_inner_nodes = 0
-    num_inner_edges = 0
-    if subgs is not None:
-        for part_id, subg in subgs.items():
-            assert np.all(F.asnumpy(subg.ndata['inner_node']) == 1)
-            assert np.all(F.asnumpy(subg.edata['inner_edge']) == 1)
-            assert np.all(F.asnumpy(subg.ndata['part_id']) == part_id)
-            num_inner_nodes += subg.number_of_nodes()
-            num_inner_edges += subg.number_of_edges()
-        assert num_inner_nodes == g.number_of_nodes()
-        print(g.number_of_edges() - num_inner_edges)
+    check_metis_partition(g, 0)
+    check_metis_partition(g, 1)
+    check_metis_partition(g, 2)
+    check_metis_partition_with_constraint(g)
 
-    subgs = dgl.transform.metis_partition(g, 4, 1)
+def check_metis_partition_with_constraint(g):
+    ntypes = np.zeros((g.number_of_nodes(),), dtype=np.int32)
+    ntypes[0:int(g.number_of_nodes()/4)] = 1
+    ntypes[int(g.number_of_nodes()*3/4):] = 2
+    subgs = dgl.transform.metis_partition(g, 4, extra_cached_hops=1, balance_ntypes=ntypes)
+    if subgs is not None:
+        for i in subgs:
+            subg = subgs[i]
+            parent_nids = F.asnumpy(subg.ndata[dgl.NID])
+            sub_ntypes = ntypes[parent_nids]
+            print('type0:', np.sum(sub_ntypes == 0))
+            print('type1:', np.sum(sub_ntypes == 1))
+            print('type2:', np.sum(sub_ntypes == 2))
+    subgs = dgl.transform.metis_partition(g, 4, extra_cached_hops=1,
+                                          balance_ntypes=ntypes, balance_edges=True)
+    if subgs is not None:
+        for i in subgs:
+            subg = subgs[i]
+            parent_nids = F.asnumpy(subg.ndata[dgl.NID])
+            sub_ntypes = ntypes[parent_nids]
+            print('type0:', np.sum(sub_ntypes == 0))
+            print('type1:', np.sum(sub_ntypes == 1))
+            print('type2:', np.sum(sub_ntypes == 2))
+
+def check_metis_partition(g, extra_hops):
+    subgs = dgl.transform.metis_partition(g, 4, extra_cached_hops=extra_hops)
     num_inner_nodes = 0
     num_inner_edges = 0
     if subgs is not None:
@@ -270,6 +294,83 @@ def test_metis_partition():
             assert np.sum(F.asnumpy(subg.ndata['part_id']) == part_id) == len(lnode_ids)
         assert num_inner_nodes == g.number_of_nodes()
         print(g.number_of_edges() - num_inner_edges)
+
+    if extra_hops == 0:
+        return
+
+    # partitions with node reshuffling
+    subgs = dgl.transform.metis_partition(g, 4, extra_cached_hops=extra_hops, reshuffle=True)
+    num_inner_nodes = 0
+    num_inner_edges = 0
+    edge_cnts = np.zeros((g.number_of_edges(),))
+    if subgs is not None:
+        for part_id, subg in subgs.items():
+            lnode_ids = np.nonzero(F.asnumpy(subg.ndata['inner_node']))[0]
+            ledge_ids = np.nonzero(F.asnumpy(subg.edata['inner_edge']))[0]
+            num_inner_nodes += len(lnode_ids)
+            num_inner_edges += len(ledge_ids)
+            assert np.sum(F.asnumpy(subg.ndata['part_id']) == part_id) == len(lnode_ids)
+            nids = F.asnumpy(subg.ndata[dgl.NID])
+
+            # ensure the local node Ids are contiguous.
+            parent_ids = F.asnumpy(subg.ndata[dgl.NID])
+            parent_ids = parent_ids[:len(lnode_ids)]
+            assert np.all(parent_ids == np.arange(parent_ids[0], parent_ids[-1] + 1))
+
+            # count the local edges.
+            parent_ids = F.asnumpy(subg.edata[dgl.EID])[ledge_ids]
+            edge_cnts[parent_ids] += 1
+
+            orig_ids = subg.ndata['orig_id']
+            inner_node = F.asnumpy(subg.ndata['inner_node'])
+            for nid in range(subg.number_of_nodes()):
+                neighs = subg.predecessors(nid)
+                old_neighs1 = F.gather_row(orig_ids, neighs)
+                old_nid = F.asnumpy(orig_ids[nid])
+                old_neighs2 = g.predecessors(old_nid)
+                # If this is an inner node, it should have the full neighborhood.
+                if inner_node[nid]:
+                    assert np.all(np.sort(F.asnumpy(old_neighs1)) == np.sort(F.asnumpy(old_neighs2)))
+        # Normally, local edges are only counted once.
+        assert np.all(edge_cnts == 1)
+
+        assert num_inner_nodes == g.number_of_nodes()
+        print(g.number_of_edges() - num_inner_edges)
+
+@unittest.skipIf(F._default_context_str == 'gpu', reason="It doesn't support GPU")
+def test_reorder_nodes():
+    g = dgl.DGLGraph(create_large_graph_index(1000), readonly=True)
+    new_nids = np.random.permutation(g.number_of_nodes())
+    # TODO(zhengda) we need to test both CSR and COO.
+    new_g = dgl.transform.reorder_nodes(g, new_nids)
+    new_in_deg = new_g.in_degrees()
+    new_out_deg = new_g.out_degrees()
+    in_deg = g.in_degrees()
+    out_deg = g.out_degrees()
+    new_in_deg1 = F.scatter_row(in_deg, F.tensor(new_nids), in_deg)
+    new_out_deg1 = F.scatter_row(out_deg, F.tensor(new_nids), out_deg)
+    assert np.all(F.asnumpy(new_in_deg == new_in_deg1))
+    assert np.all(F.asnumpy(new_out_deg == new_out_deg1))
+    orig_ids = F.asnumpy(new_g.ndata['orig_id'])
+    for nid in range(g.number_of_nodes()):
+        neighs = F.asnumpy(g.successors(nid))
+        new_neighs1 = new_nids[neighs]
+        new_nid = new_nids[nid]
+        new_neighs2 = new_g.successors(new_nid)
+        assert np.all(np.sort(new_neighs1) == np.sort(F.asnumpy(new_neighs2)))
+
+    for nid in range(new_g.number_of_nodes()):
+        neighs = F.asnumpy(new_g.successors(nid))
+        old_neighs1 = orig_ids[neighs]
+        old_nid = orig_ids[nid]
+        old_neighs2 = g.successors(old_nid)
+        assert np.all(np.sort(old_neighs1) == np.sort(F.asnumpy(old_neighs2)))
+
+        neighs = F.asnumpy(new_g.predecessors(nid))
+        old_neighs1 = orig_ids[neighs]
+        old_nid = orig_ids[nid]
+        old_neighs2 = g.predecessors(old_nid)
+        assert np.all(np.sort(old_neighs1) == np.sort(F.asnumpy(old_neighs2)))
 
 @unittest.skipIf(F._default_context_str == 'gpu', reason="GPU not implemented")
 @parametrize_dtype
@@ -502,10 +603,6 @@ def test_to_block(index_dtype):
     assert bg.number_of_src_nodes() == 4
     assert bg.number_of_dst_nodes() == 4
 
-    dst_nodes = F.tensor([3, 4], dtype=getattr(F, index_dtype))
-    bg = dgl.to_block(g_a, dst_nodes)
-    check(g_a, bg, 'A', 'AA', dst_nodes)
-
     dst_nodes = F.tensor([4, 3, 2, 1], dtype=getattr(F, index_dtype))
     bg = dgl.to_block(g_a, dst_nodes)
     check(g_a, bg, 'A', 'AA', dst_nodes)
@@ -519,15 +616,11 @@ def test_to_block(index_dtype):
     assert bg.number_of_nodes('DST/A') == 0
     checkall(g_ab, bg, None)
 
-    dst_nodes = {'B': F.tensor([5, 6], dtype=getattr(F, index_dtype))}
+    dst_nodes = {'B': F.tensor([5, 6, 3, 1], dtype=getattr(F, index_dtype))}
     bg = dgl.to_block(g, dst_nodes)
-    assert bg.number_of_nodes('SRC/B') == 2
+    assert bg.number_of_nodes('SRC/B') == 4
     assert F.array_equal(bg.srcnodes['B'].data[dgl.NID], bg.dstnodes['B'].data[dgl.NID])
     assert bg.number_of_nodes('DST/A') == 0
-    checkall(g, bg, dst_nodes)
-
-    dst_nodes = {'A': F.tensor([3, 4], dtype=getattr(F, index_dtype)), 'B': F.tensor([5, 6], dtype=getattr(F, index_dtype))}
-    bg = dgl.to_block(g, dst_nodes)
     checkall(g, bg, dst_nodes)
 
     dst_nodes = {'A': F.tensor([4, 3, 2, 1], dtype=getattr(F, index_dtype)), 'B': F.tensor([3, 5, 6, 1], dtype=getattr(F, index_dtype))}
@@ -615,6 +708,7 @@ def test_cast():
     assert F.array_equal(g2dst, gdst)
 
 if __name__ == '__main__':
+    test_reorder_nodes()
     # test_line_graph()
     # test_no_backtracking()
     # test_reverse()
@@ -627,7 +721,7 @@ if __name__ == '__main__':
     # test_remove_self_loop()
     # test_add_self_loop()
     # test_partition_with_halo()
-    # test_metis_partition()
+    test_metis_partition()
     # test_compact()
     # test_to_simple()
     # test_in_subgraph("int32")

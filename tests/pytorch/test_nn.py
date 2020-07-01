@@ -373,38 +373,66 @@ def test_rgcn():
     O = 8
 
     rgc_basis = nn.RelGraphConv(I, O, R, "basis", B).to(ctx)
+    rgc_basis_low = nn.RelGraphConv(I, O, R, "basis", B, low_mem=True).to(ctx)
+    rgc_basis_low.weight = rgc_basis.weight
+    rgc_basis_low.w_comp = rgc_basis.w_comp
     h = th.randn((100, I)).to(ctx)
     r = th.tensor(etype).to(ctx)
     h_new = rgc_basis(g, h, r)
+    h_new_low = rgc_basis_low(g, h, r)
     assert list(h_new.shape) == [100, O]
+    assert list(h_new_low.shape) == [100, O]
+    assert F.allclose(h_new, h_new_low)
 
     rgc_bdd = nn.RelGraphConv(I, O, R, "bdd", B).to(ctx)
+    rgc_bdd_low = nn.RelGraphConv(I, O, R, "bdd", B, low_mem=True).to(ctx)
+    rgc_bdd_low.weight = rgc_bdd.weight
     h = th.randn((100, I)).to(ctx)
     r = th.tensor(etype).to(ctx)
     h_new = rgc_bdd(g, h, r)
+    h_new_low = rgc_bdd_low(g, h, r)
     assert list(h_new.shape) == [100, O]
+    assert list(h_new_low.shape) == [100, O]
+    assert F.allclose(h_new, h_new_low)
 
     # with norm
     norm = th.zeros((g.number_of_edges(), 1)).to(ctx)
 
     rgc_basis = nn.RelGraphConv(I, O, R, "basis", B).to(ctx)
+    rgc_basis_low = nn.RelGraphConv(I, O, R, "basis", B, low_mem=True).to(ctx)
+    rgc_basis_low.weight = rgc_basis.weight
+    rgc_basis_low.w_comp = rgc_basis.w_comp
     h = th.randn((100, I)).to(ctx)
     r = th.tensor(etype).to(ctx)
     h_new = rgc_basis(g, h, r, norm)
+    h_new_low = rgc_basis_low(g, h, r, norm)
     assert list(h_new.shape) == [100, O]
+    assert list(h_new_low.shape) == [100, O]
+    assert F.allclose(h_new, h_new_low)
 
     rgc_bdd = nn.RelGraphConv(I, O, R, "bdd", B).to(ctx)
+    rgc_bdd_low = nn.RelGraphConv(I, O, R, "bdd", B, low_mem=True).to(ctx)
+    rgc_bdd_low.weight = rgc_bdd.weight
     h = th.randn((100, I)).to(ctx)
     r = th.tensor(etype).to(ctx)
     h_new = rgc_bdd(g, h, r, norm)
+    h_new_low = rgc_bdd_low(g, h, r, norm)
     assert list(h_new.shape) == [100, O]
+    assert list(h_new_low.shape) == [100, O]
+    assert F.allclose(h_new, h_new_low)
 
     # id input
     rgc_basis = nn.RelGraphConv(I, O, R, "basis", B).to(ctx)
+    rgc_basis_low = nn.RelGraphConv(I, O, R, "basis", B, low_mem=True).to(ctx)
+    rgc_basis_low.weight = rgc_basis.weight
+    rgc_basis_low.w_comp = rgc_basis.w_comp
     h = th.randint(0, I, (100,)).to(ctx)
     r = th.tensor(etype).to(ctx)
     h_new = rgc_basis(g, h, r)
+    h_new_low = rgc_basis_low(g, h, r)
     assert list(h_new.shape) == [100, O]
+    assert list(h_new_low.shape) == [100, O]
+    assert F.allclose(h_new, h_new_low)
 
 def test_gat_conv():
     ctx = F.ctx()
@@ -651,17 +679,19 @@ def test_dense_cheb_conv():
         ctx = F.ctx()
         g = dgl.DGLGraph(sp.sparse.random(100, 100, density=0.1), readonly=True)
         adj = g.adjacency_matrix(ctx=ctx).to_dense()
-        cheb = nn.ChebConv(5, 2, k)
+        cheb = nn.ChebConv(5, 2, k, None)
         dense_cheb = nn.DenseChebConv(5, 2, k)
-        for i in range(len(cheb.fc)):
-            dense_cheb.W.data[i] = cheb.fc[i].weight.data.t()
-        if cheb.bias is not None:
-            dense_cheb.bias.data = cheb.bias.data
+        #for i in range(len(cheb.fc)):
+        #    dense_cheb.W.data[i] = cheb.fc[i].weight.data.t()
+        dense_cheb.W.data = cheb.linear.weight.data.transpose(-1, -2).view(k, 5, 2)
+        if cheb.linear.bias is not None:
+            dense_cheb.bias.data = cheb.linear.bias.data
         feat = F.randn((100, 5))
         cheb = cheb.to(ctx)
         dense_cheb = dense_cheb.to(ctx)
         out_cheb = cheb(g, feat, [2.0])
         out_dense_cheb = dense_cheb(adj, feat, 2.0)
+        print(k, out_cheb, out_dense_cheb)
         assert F.allclose(out_cheb, out_dense_cheb)
 
 def test_sequential():
