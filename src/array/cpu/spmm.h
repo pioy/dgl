@@ -41,7 +41,7 @@ void SpMMSumCsr(
           lhs_dim = bcast.lhs_len,
           rhs_dim = bcast.rhs_len;
   DType* O = out.Ptr<DType>();
-#pragma omp parallel for
+#pragma omp parallel for schedule(dynamic)
   for (IdType rid = 0; rid < csr.num_rows; ++rid) {
     const IdType row_start = indptr[rid], row_end = indptr[rid + 1];
     DType *out_off = O + rid * dim;
